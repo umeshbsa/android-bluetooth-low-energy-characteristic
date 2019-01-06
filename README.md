@@ -1,0 +1,1 @@
+# android-bluetooth-low-energy-characteristic
