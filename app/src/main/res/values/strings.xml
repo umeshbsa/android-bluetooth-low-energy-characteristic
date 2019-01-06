@@ -1,0 +1,7 @@
+<resources>
+
+    <string name="app_name">BLE Characteristic</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+
+</resources>
