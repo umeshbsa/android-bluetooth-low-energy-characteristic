@@ -3,5 +3,7 @@
     <string name="app_name">BLE Characteristic</string>
     <string name="connected">Connected</string>
     <string name="disconnected">Disconnected</string>
-
+    <string name="title_location_permission">Location Permission</string>
+    <string name="text_location_permission">Enable location permission to access this feature</string>
+    <string name="ok">Ok</string>
 </resources>

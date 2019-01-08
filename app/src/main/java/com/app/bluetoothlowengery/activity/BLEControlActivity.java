@@ -1,7 +1,6 @@
 package com.app.bluetoothlowengery.activity;
 
 import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -36,22 +35,21 @@ public class BLEControlActivity extends AppCompatActivity {
     public static final String EXTRAS_DEVICE_NAME = "DEVICE_NAME";
     public static final String EXTRAS_DEVICE_ADDRESS = "DEVICE_ADDRESS";
 
-    private String mDeviceName;
     private String mDeviceAddress;
     private BLEService mBluetoothLeService;
     private ArrayList<ArrayList<BluetoothGattCharacteristic>> mGattCharacteristics =
             new ArrayList<ArrayList<BluetoothGattCharacteristic>>();
 
     private boolean mConnected = false;
-    private BluetoothGattCharacteristic mNotifyCharacteristic;
-
     private final String LIST_NAME = "NAME";
     private final String LIST_UUID = "UUID";
 
     private TextView mDeviceAddressTv;
     private TextView mConnectionState;
-    private TextView mDataField;
     private ExpandableListView mGattServicesList;
+    private TextView tvWriteData;
+    private TextView tvReadData;
+    private TextView tvAllData;
 
 
     @Override
@@ -60,14 +58,12 @@ public class BLEControlActivity extends AppCompatActivity {
         setContentView(R.layout.activity_ble_control);
 
         final Intent intent = getIntent();
-        mDeviceName = intent.getStringExtra(EXTRAS_DEVICE_NAME);
         mDeviceAddress = intent.getStringExtra(EXTRAS_DEVICE_ADDRESS);
 
         // Sets up UI references.
 
         mDeviceAddressTv = ((TextView) findViewById(R.id.device_address));
         mConnectionState = (TextView) findViewById(R.id.connection_state);
-        mDataField = (TextView) findViewById(R.id.data_value);
         mGattServicesList = (ExpandableListView) findViewById(R.id.elistview_all_service_characteristic);
 
         mDeviceAddressTv.setText(mDeviceAddress);
@@ -76,18 +72,40 @@ public class BLEControlActivity extends AppCompatActivity {
         Intent gattServiceIntent = new Intent(this, BLEService.class);
         bindService(gattServiceIntent, mServiceConnection, BIND_AUTO_CREATE);
 
+        tvWriteData = (TextView) findViewById(R.id.tv_write_data);
+        tvReadData = (TextView) findViewById(R.id.tv_read_data);
+        tvAllData = (TextView) findViewById(R.id.tv_all_data);
 
         findViewById(R.id.btn_read_characteristic).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mBluetoothLeService.readCharacteristic("e54eaa57-371b-476c-99a3-74d267e3edae");
+                boolean isRead = mBluetoothLeService.readCharacteristic("e54eaa55-371b-476c-99a3-74d267e3edae");
+                tvReadData.setText("Read on 55 " + isRead);
             }
         });
 
         findViewById(R.id.btn_write_characteristic).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mBluetoothLeService.writeConnectionForProtection("e54eaa55-371b-476c-99a3-74d267e3edae");
+                boolean isWrite = mBluetoothLeService.writeConnectionForProtection("e54eaa55-371b-476c-99a3-74d267e3edae");
+
+                if (isWrite) {
+                    tvWriteData.setText("Write on 55 is successfully");
+                } else {
+                    tvWriteData.setText("Write on 55 is unsuccessfully. Please try again");
+                }
+            }
+        });
+        mGattServicesList.setOnChildClickListener(new ExpandableListView.OnChildClickListener() {
+            @Override
+            public boolean onChildClick(ExpandableListView parent, View v, int groupPosition, int childPosition, long id) {
+
+                if (mGattCharacteristics != null) {
+                    final BluetoothGattCharacteristic characteristic = mGattCharacteristics.get(groupPosition).get(childPosition);
+                    mBluetoothLeService.readCharacteristic(characteristic);
+                    return true;
+                }
+                return false;
             }
         });
 
@@ -155,12 +173,6 @@ public class BLEControlActivity extends AppCompatActivity {
         });
     }
 
-    private void displayData(String data) {
-        if (data != null) {
-            mDataField.setText(data);
-        }
-    }
-
 
     private void displayGattServices(List<BluetoothGattService> gattServices) {
         if (gattServices == null) return;
@@ -183,9 +195,6 @@ public class BLEControlActivity extends AppCompatActivity {
             uuid = gattService.getUuid().toString();
 
             String serviceNameFromUUID = BLEUUIDConstant.lookup(uuid, unknownServiceString);
-
-            //  Log.i("DDDDDDDDD", "SERVICE Name : " + serviceNameFromUUID);
-            //  Log.i("DDDDDDDDD", "SERVICE UUID : " + uuid);
             currentServiceData.put(LIST_NAME, serviceNameFromUUID);
             currentServiceData.put(LIST_UUID, uuid);
 
@@ -197,10 +206,7 @@ public class BLEControlActivity extends AppCompatActivity {
 
             ArrayList<BluetoothGattCharacteristic> charas = new ArrayList<BluetoothGattCharacteristic>();
 
-            // Loops through available Characteristics.
             for (BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
-
-                mBluetoothLeService.setCharacteristicNotification(gattCharacteristic, true);
 
                 charas.add(gattCharacteristic);
 
@@ -210,19 +216,10 @@ public class BLEControlActivity extends AppCompatActivity {
 
                 String charNameFromUUID = BLEUUIDConstant.lookup(uuid, unknownCharaString);
 
-                //   Log.i("DDDDDDDDD", "Char Name : " + charNameFromUUID);
-                // Log.i("DDDDDDDDD", "Char UUID : " + uuid);
-
                 currentCharaData.put(LIST_NAME, charNameFromUUID);
                 currentCharaData.put(LIST_UUID, uuid);
 
                 gattCharacteristicGroupData.add(currentCharaData);
-
-                List<BluetoothGattDescriptor> descs = gattCharacteristic.getDescriptors();
-                for (BluetoothGattDescriptor desc : descs) {
-                    // Log.i("DDDDDDDDD", "Desc Name : " + charNameFromUUID);
-                    //Log.i("DDDDDDDDD", "Desc UUID : " + uuid);
-                }
             }
             mGattCharacteristics.add(charas);
             gattCharacteristicData.add(gattCharacteristicGroupData);
@@ -244,16 +241,14 @@ public class BLEControlActivity extends AppCompatActivity {
 
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(BLEService.ACTION_BLE_CONNECTED);
-        intentFilter.addAction(BLEService.ACTION_BLE_DISCONNECTED);
-        intentFilter.addAction(BLEService.ACTION_BLE_SERVICES_DISCOVERED);
-        intentFilter.addAction(BLEService.ACTION_BLE_DATA_AVAILABLE);
+        intentFilter.addAction(BLEService.ACTION_GATT_CONNECTED);
+        intentFilter.addAction(BLEService.ACTION_GATT_DISCONNECTED);
+        intentFilter.addAction(BLEService.ACTION_GATT_SERVICES_DISCOVERED);
+        intentFilter.addAction(BLEService.ACTION_DATA_AVAILABLE);
         return intentFilter;
     }
 
-
     private void clearUI() {
-        mDataField.setText("No data");
         Toast.makeText(this, "Service disconnected", Toast.LENGTH_LONG).show();
     }
 
@@ -274,38 +269,30 @@ public class BLEControlActivity extends AppCompatActivity {
         }
     };
 
-    // Handles various events fired by the Service.
-    // ACTION_BLE_CONNECTED: connected to a GATT server.
-    // ACTION_BLE_DISCONNECTED: disconnected from a GATT server.
-    // ACTION_BLE_SERVICES_DISCOVERED: discovered GATT services.
-    // ACTION_BLE_DATA_AVAILABLE: received data from the device.  This can be a result of read
-    //                        or notification operations.
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
-            if (BLEService.ACTION_BLE_CONNECTED.equals(action)) {
+            if (BLEService.ACTION_GATT_CONNECTED.equals(action)) {
 
                 mConnected = true;
                 updateConnectionState(R.string.connected);
                 invalidateOptionsMenu();
 
-            } else if (BLEService.ACTION_BLE_DISCONNECTED.equals(action)) {
+            } else if (BLEService.ACTION_GATT_DISCONNECTED.equals(action)) {
 
                 mConnected = false;
                 updateConnectionState(R.string.disconnected);
                 invalidateOptionsMenu();
                 clearUI();
 
-            } else if (BLEService.ACTION_BLE_SERVICES_DISCOVERED.equals(action)) {
-
-                // Show all the supported services and characteristics on the user interface.
+            } else if (BLEService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
                 displayGattServices(mBluetoothLeService.getSupportedGattServices());
 
-            } else if (BLEService.ACTION_BLE_DATA_AVAILABLE.equals(action)) {
+            } else if (BLEService.ACTION_DATA_AVAILABLE.equals(action)) {
 
-                displayData(intent.getStringExtra(BLEService.EXTRA_BLE_DATA));
-
+                String readCharacteristic = intent.getStringExtra(BLEService.EXTRA_DATA);
+                tvAllData.setText(readCharacteristic);
             }
         }
     };

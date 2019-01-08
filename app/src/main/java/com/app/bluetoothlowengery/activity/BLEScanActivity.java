@@ -1,14 +1,20 @@
 package com.app.bluetoothlowengery.activity;
 
+import android.Manifest;
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.annotation.Nullable;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.AdapterView;
@@ -29,6 +35,7 @@ public class BLEScanActivity extends AppCompatActivity {
     private BLEScanAdapter mBLEAdapter;
     private ListView mScanListView;
     private boolean isScanning;
+    private static final int MY_PERMISSIONS_REQUEST_LOCATION = 1000;
 
 
     @Override
@@ -92,26 +99,24 @@ public class BLEScanActivity extends AppCompatActivity {
             }
         });
 
-        scanBLEDevices();
+        if (checkLocationPermission()) {
+            scanLeDevice(!isScanning);
+        }
     }
 
-    private void scanBLEDevices() {
-        isScanning = true;
-        // Stops scanning after 2 second
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                isScanning = false;
-                mBluetoothAdapter.stopLeScan(mLeScanCallback);
-                Toast.makeText(BLEScanActivity.this, "Scan Stop in 2 sec.", Toast.LENGTH_LONG).show();
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == REQUEST_ENABLE_BT) {
+                scanLeDevice(!isScanning);
             }
-        }, 2000);
-
-        mBluetoothAdapter.startLeScan(mLeScanCallback);
+        }
     }
+
 
     /**
-     * All device scan list and set inot ble adapter to show with list view.
+     * All device scan list and set into ble adapter to show with list view.
      */
     private BluetoothAdapter.LeScanCallback mLeScanCallback = new BluetoothAdapter.LeScanCallback() {
 
@@ -126,4 +131,82 @@ public class BLEScanActivity extends AppCompatActivity {
             });
         }
     };
+
+
+    private void scanLeDevice(final boolean enable) {
+
+        if (mBluetoothAdapter.isEnabled()) {
+            if (enable) {
+                // Stops scanning after a pre-defined scan period.
+                mHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        mBluetoothAdapter.stopLeScan(mLeScanCallback);
+                        Toast.makeText(BLEScanActivity.this, "Scan all devices in 2 sec.", Toast.LENGTH_LONG).show();
+                    }
+                }, 2000);
+
+                mBluetoothAdapter.startLeScan(mLeScanCallback);
+            } else {
+                mBluetoothAdapter.stopLeScan(mLeScanCallback);
+            }
+        } else {
+            Toast.makeText(BLEScanActivity.this, "Bluetooth is not enable", Toast.LENGTH_LONG).show();
+        }
+    }
+
+
+    public boolean checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.ACCESS_FINE_LOCATION)) {
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.title_location_permission)
+                        .setMessage(R.string.text_location_permission)
+                        .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                //Prompt the user once explanation has been shown
+                                ActivityCompat.requestPermissions(BLEScanActivity.this,
+                                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                                        MY_PERMISSIONS_REQUEST_LOCATION);
+                            }
+                        })
+                        .create()
+                        .show();
+
+
+            } else {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                        MY_PERMISSIONS_REQUEST_LOCATION);
+            }
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case MY_PERMISSIONS_REQUEST_LOCATION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                    if (ContextCompat.checkSelfPermission(this,
+                            Manifest.permission.ACCESS_FINE_LOCATION)
+                            == PackageManager.PERMISSION_GRANTED) {
+                        scanLeDevice(!isScanning);
+                    }
+
+                } else {
+                    Toast.makeText(BLEScanActivity.this, getString(R.string.text_location_permission), Toast.LENGTH_LONG).show();
+                }
+                return;
+            }
+
+        }
+    }
 }

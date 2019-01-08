@@ -14,45 +14,60 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.IBinder;
+import android.util.Log;
 
 import java.util.List;
 import java.util.UUID;
 
-
 public class BLEService extends Service {
-
-    private final static String TAG = BLEService.class.getSimpleName();
+    private final static String TAG = "DDDDDDDDDDDD";
 
     private BluetoothManager mBluetoothManager;
     private BluetoothAdapter mBluetoothAdapter;
     private String mBluetoothDeviceAddress;
     private BluetoothGatt mBluetoothGatt;
+    private int mConnectionState = STATE_DISCONNECTED;
 
-    public final static String ACTION_BLE_CONNECTED =
-            "com.app.simplebluetooth.test.code.ACTION_BLE_CONNECTED";
+    private static final int STATE_DISCONNECTED = 0;
+    private static final int STATE_CONNECTING = 1;
+    private static final int STATE_CONNECTED = 2;
 
-    public final static String ACTION_BLE_DISCONNECTED =
-            "com.app.simplebluetooth.test.code.ACTION_BLE_DISCONNECTED";
+    public final static String ACTION_GATT_CONNECTED =
+            "com.app.bluetoothlowengery.ACTION_GATT_CONNECTED";
 
-    public final static String ACTION_BLE_SERVICES_DISCOVERED =
-            "com.app.simplebluetooth.test.code.ACTION_BLE_SERVICES_DISCOVERED";
+    public final static String ACTION_GATT_DISCONNECTED =
+            "com.app.bluetoothlowengery.ACTION_GATT_DISCONNECTED";
 
-    public final static String ACTION_BLE_DATA_AVAILABLE =
-            "com.app.simplebluetooth.test.code.ACTION_BLE_DATA_AVAILABLE";
+    public final static String ACTION_GATT_SERVICES_DISCOVERED =
+            "com.app.bluetoothlowengery.ACTION_GATT_SERVICES_DISCOVERED";
 
-    public final static String EXTRA_BLE_DATA =
-            "com.app.simplebluetooth.test.code.EXTRA_BLE_DATA";
+    public final static String ACTION_DATA_AVAILABLE =
+            "com.app.bluetoothlowengery.ACTION_DATA_AVAILABLE";
 
+    public final static String EXTRA_DATA =
+            "com.app.bluetoothlowengery.EXTRA_DATA";
 
+    /**
+     * All callback of BLE
+     */
     private final BluetoothGattCallback mGattCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
             String intentAction;
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                intentAction = ACTION_BLE_CONNECTED;
+                intentAction = ACTION_GATT_CONNECTED;
+                mConnectionState = STATE_CONNECTED;
                 broadcastUpdate(intentAction);
+                Log.i(TAG, "Connected to GATT server.");
+                // Attempts to discover services after successful connection.
+                Log.i(TAG, "Attempting to start service discovery:" +
+                        mBluetoothGatt.discoverServices());
+
+
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                intentAction = ACTION_BLE_DISCONNECTED;
+                intentAction = ACTION_GATT_DISCONNECTED;
+                mConnectionState = STATE_DISCONNECTED;
+                Log.i(TAG, "Disconnected from GATT server.");
                 broadcastUpdate(intentAction);
             }
         }
@@ -60,28 +75,26 @@ public class BLEService extends Service {
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                broadcastUpdate(ACTION_BLE_SERVICES_DISCOVERED);
+                broadcastUpdate(ACTION_GATT_SERVICES_DISCOVERED);
             }
         }
 
         @Override
         public void onCharacteristicRead(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                broadcastUpdate(ACTION_BLE_DATA_AVAILABLE, characteristic);
+                broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
             }
-        }
-
-        @Override
-        public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
-            List<BluetoothGattCharacteristic> unknownChar = gatt.getService(UUID.fromString("e54eaa50-371b-476c-99a3-74d267e3edae")).getCharacteristics();
         }
 
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
-            broadcastUpdate(ACTION_BLE_DATA_AVAILABLE, characteristic);
+            broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
         }
 
+        @Override
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+        }
     };
 
     private void broadcastUpdate(final String action) {
@@ -89,18 +102,22 @@ public class BLEService extends Service {
         sendBroadcast(intent);
     }
 
+
     private void broadcastUpdate(final String action, final BluetoothGattCharacteristic characteristic) {
         final Intent intent = new Intent(action);
         final byte[] data = characteristic.getValue();
-
         if (data != null && data.length > 0) {
             final StringBuilder stringBuilder = new StringBuilder(data.length);
             for (byte byteChar : data) {
                 stringBuilder.append(String.format("%02X ", byteChar));
             }
-            intent.putExtra(EXTRA_BLE_DATA, stringBuilder.toString());
+            intent.putExtra(EXTRA_DATA, stringBuilder.toString());
         }
         sendBroadcast(intent);
+    }
+
+    public void readCharacteristic(BluetoothGattCharacteristic gattCharacteristic) {
+        mBluetoothGatt.readCharacteristic(gattCharacteristic);
     }
 
 
@@ -108,6 +125,7 @@ public class BLEService extends Service {
         public BLEService getService() {
             return BLEService.this;
         }
+
     }
 
     @Override
@@ -127,25 +145,31 @@ public class BLEService extends Service {
         if (mBluetoothManager == null) {
             mBluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             if (mBluetoothManager == null) {
+                Log.i(TAG, "Unable to initialize BluetoothManager.");
                 return false;
             }
         }
 
         mBluetoothAdapter = mBluetoothManager.getAdapter();
         if (mBluetoothAdapter == null) {
+            Log.i(TAG, "Unable to obtain a BluetoothAdapter.");
             return false;
         }
 
         return true;
     }
 
-
     public boolean connect(final String address) {
         if (mBluetoothAdapter == null || address == null) {
+            Log.i(TAG, "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
-        if (mBluetoothDeviceAddress != null && address.equals(mBluetoothDeviceAddress) && mBluetoothGatt != null) {
+
+        if (mBluetoothDeviceAddress != null && address.equals(mBluetoothDeviceAddress)
+                && mBluetoothGatt != null) {
+            Log.i(TAG, "Trying to use an existing mBluetoothGatt for connection.");
             if (mBluetoothGatt.connect()) {
+                mConnectionState = STATE_CONNECTING;
                 return true;
             } else {
                 return false;
@@ -154,15 +178,20 @@ public class BLEService extends Service {
 
         final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         if (device == null) {
+            Log.w(TAG, "Device not found.  Unable to connect.");
             return false;
         }
         mBluetoothGatt = device.connectGatt(this, false, mGattCallback);
+        Log.i(TAG, "Trying to create a new connection.");
         mBluetoothDeviceAddress = address;
+        mConnectionState = STATE_CONNECTING;
         return true;
     }
 
+
     public void disconnect() {
         if (mBluetoothAdapter == null || mBluetoothGatt == null) {
+            Log.i(TAG, "BluetoothAdapter not initialized");
             return;
         }
         mBluetoothGatt.disconnect();
@@ -176,48 +205,23 @@ public class BLEService extends Service {
         mBluetoothGatt = null;
     }
 
-    public void readCharacteristic(String charUUID55) {
+
+    public boolean readCharacteristic(String charUUID55) {
         if (mBluetoothAdapter == null || mBluetoothGatt == null) {
-            return;
+            Log.i(TAG, "BluetoothAdapter not initialized");
+            return false;
         }
-
-        BluetoothGattCharacteristic characteristic = mBluetoothGatt.getService(UUID.fromString("e54eaa50-371b-476c-99a3-74d267e3edae"))
-                .getCharacteristic(UUID.fromString(charUUID55));
-
-        boolean isRead = mBluetoothGatt.readCharacteristic(characteristic);
+        BluetoothGattCharacteristic characteristic = getUnknownChar(charUUID55);
+        return mBluetoothGatt.readCharacteristic(characteristic);
     }
 
-
-    public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic,
-                                              boolean enabled) {
-        if (mBluetoothAdapter == null || mBluetoothGatt == null) {
-            return;
-        }
-        mBluetoothGatt.setCharacteristicNotification(characteristic, enabled);
-
-        BluetoothGattDescriptor descriptor = characteristic.getDescriptor(UUID.fromString(BLEUUIDConstant.CLIENT_CHARACTERISTIC_CONFIG));
-        if (descriptor != null) {
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_INDICATION_VALUE);
-            mBluetoothGatt.writeDescriptor(descriptor);
-
-        }
-    }
-
-    public void writeConnectionForProtection(String charUUID55) {
-        BluetoothGattCharacteristic characteristic = mBluetoothGatt.getService(UUID.fromString("e54eaa50-371b-476c-99a3-74d267e3edae"))
-                .getCharacteristic(UUID.fromString(charUUID55));
-        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-        characteristic.setValue(getCharacteristicForConnectionProtection());
-        boolean isWrite = mBluetoothGatt.writeCharacteristic(characteristic);
-
-    }
-
-
-    public byte[] getCharacteristicForConnectionProtection() {
+    public boolean writeConnectionForProtection(String charUUID55) {
+        BluetoothGattCharacteristic characteristic = getUnknownChar(charUUID55);
         byte[] cmd = new byte[1];
         cmd[0] = (byte) 0xee;
-        return cmd;
+        characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+        characteristic.setValue(cmd);
+        return mBluetoothGatt.writeCharacteristic(characteristic);
     }
 
     public List<BluetoothGattService> getSupportedGattServices() {
@@ -225,4 +229,12 @@ public class BLEService extends Service {
 
         return mBluetoothGatt.getServices();
     }
+
+    public BluetoothGattCharacteristic getUnknownChar(String charUUID) {
+        return mBluetoothGatt.getService(UUID.fromString("e54eaa50-371b-476c-99a3-74d267e3edae"))
+                .getCharacteristic(UUID.fromString(charUUID));
+
+    }
 }
+
+
